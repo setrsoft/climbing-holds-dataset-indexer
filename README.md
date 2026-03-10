@@ -1,5 +1,5 @@
 ---
-title: Setrsoft Auto Indexeur
+title: Climbing Holds Dataset Indexer
 emoji: ⚡
 colorFrom: yellow
 colorTo: gray
