@@ -19,10 +19,11 @@ from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any
 
-from huggingface_hub import HfApi, hf_hub_download, WebhooksServer, WebhookPayload
+from huggingface_hub import CommitOperationAdd, HfApi, hf_hub_download, WebhooksServer, WebhookPayload
 
 DEFAULT_REPO_ID = "setrsoft/climbing-holds"
-GLOBAL_INDEX_PATH = "global_index.json"
+GLOBAL_INDEX_PATH = "meta/global_index.json"
+TRAIN_JSONL_PATH = "train.jsonl"
 METADATA_FILENAME = "metadata.json"
 MESH_EXTENSIONS = {".glb", ".gltf", ".obj", ".stl"}
 MANAGED_ATTENTION_KEYS = {
@@ -63,7 +64,6 @@ def bootstrap_global_index(repo_id: str) -> dict[str, Any]:
         },
         "stats": {"total_holds": 0, "to_identify": 0},
         "needs_attention": {},
-        "holds": [],
     }
 
 
@@ -128,7 +128,11 @@ def list_dataset_files(
         repo_path = PurePosixPath(repo_file)
         directory = str(repo_path.parent)
         files_by_directory[directory].append(repo_file)
-        if len(repo_path.parts) == 2 and repo_path.name == METADATA_FILENAME:
+        if (
+            len(repo_path.parts) == 2
+            and repo_path.name == METADATA_FILENAME
+            and repo_path.parent.name != "meta"
+        ):
             metadata_paths.append(repo_file)
 
     metadata_paths.sort()
@@ -306,6 +310,50 @@ def validate_metadata(
         )
 
 
+def canonical_metadata_defaults() -> list[tuple[str, Any]]:
+    return [
+        ("id", ""),
+        ("hold_id", ""),
+        ("created_at", ""),
+        ("last_update", ""),
+        ("timezone_offset", ""),
+        ("type", ""),
+        ("labels", []),
+        ("color_of_scan", ""),
+        ("available_colors", []),
+        ("manufacturer", ""),
+        ("model", ""),
+        ("size", ""),
+        ("note", ""),
+        ("status", ""),
+        ("text", ""),
+    ]
+
+
+def normalize_metadata(metadata: dict[str, Any], *, hold_id: str) -> tuple[dict[str, Any], bool]:
+    defaults = canonical_metadata_defaults()
+    normalized: dict[str, Any] = {}
+    changed = False
+
+    existing = dict(metadata)
+    existing["hold_id"] = hold_id
+
+    for key, default_value in defaults:
+        if key in existing:
+            normalized[key] = existing[key]
+        else:
+            if isinstance(default_value, list):
+                normalized[key] = []
+            else:
+                normalized[key] = default_value
+            changed = True
+
+    for key, value in existing.items():
+        if key not in normalized:
+            normalized[key] = value
+    return normalized, changed
+
+
 def rebuild_holds(
     *,
     repo_id: str,
@@ -315,12 +363,13 @@ def rebuild_holds(
     files_by_directory: dict[str, list[str]],
     allowed_references: dict[str, set[str]],
     initial_attention: dict[str, set[str]],
-) -> tuple[list[dict[str, Any]], dict[str, set[str]]]:
+) -> tuple[list[dict[str, Any]], dict[str, set[str]], dict[str, dict[str, Any]]]:
     needs_attention = {key: set(values) for key, values in initial_attention.items()}
     for managed_key in MANAGED_ATTENTION_KEYS:
         needs_attention[managed_key] = set()
 
     holds: list[dict[str, Any]] = []
+    metadata_updates: dict[str, dict[str, Any]] = {}
 
     for metadata_path in metadata_paths:
         hold_directory = str(PurePosixPath(metadata_path).parent)
@@ -342,8 +391,9 @@ def rebuild_holds(
             continue
 
         hold_id = canonical_hold_id(metadata, metadata_path)
-        metadata_copy = dict(metadata)
-        metadata_copy["hold_id"] = hold_id
+        metadata_copy, did_change = normalize_metadata(metadata, hold_id=hold_id)
+        if did_change:
+            metadata_updates[metadata_path] = metadata_copy
 
         validate_metadata(metadata_copy, hold_id, allowed_references, needs_attention)
 
@@ -358,7 +408,7 @@ def rebuild_holds(
         holds.append(metadata_copy)
 
     holds.sort(key=lambda item: str(item.get("hold_id", "")))
-    return holds, needs_attention
+    return holds, needs_attention, metadata_updates
 
 
 def prepare_initial_attention(global_index: dict[str, Any]) -> dict[str, set[str]]:
@@ -384,7 +434,6 @@ def update_global_index(
     needs_attention: dict[str, set[str]],
 ) -> dict[str, Any]:
     next_index = dict(current_index)
-    next_index["holds"] = holds
     next_index["last_updated"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
     stats = current_index.get("stats", {})
@@ -407,7 +456,6 @@ def update_global_index(
 
 def build_comparison_payload(global_index: dict[str, Any]) -> dict[str, Any]:
     return {
-        "holds": global_index.get("holds", []),
         "stats": global_index.get("stats", {}),
         "needs_attention": global_index.get("needs_attention", {}),
     }
@@ -424,16 +472,56 @@ def has_meaningful_changes(current_index: dict[str, Any], updated_index: dict[st
     )
 
 
-def upload_global_index(api: HfApi, repo_id: str, token: str, payload: dict[str, Any]) -> None:
-    serialized = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
-    api.upload_file(
-        path_or_fileobj=io.BytesIO(serialized.encode("utf-8")),
-        path_in_repo=GLOBAL_INDEX_PATH,
+def build_train_jsonl(holds: list[dict[str, Any]]) -> str:
+    lines: list[str] = []
+    for hold in sorted(holds, key=lambda item: str(item.get("hold_id", ""))):
+        lines.append(json.dumps(hold, ensure_ascii=False, separators=(",", ":")))
+    return "\n".join(lines) + "\n"
+
+
+def commit_dataset_updates(
+    api: HfApi,
+    *,
+    repo_id: str,
+    token: str,
+    global_index_payload: dict[str, Any],
+    train_jsonl_payload: str,
+    metadata_updates: dict[str, dict[str, Any]],
+) -> None:
+    operations: list[CommitOperationAdd] = []
+
+    serialized_index = json.dumps(global_index_payload, indent=2, ensure_ascii=False) + "\n"
+    operations.append(
+        CommitOperationAdd(
+            path_in_repo=GLOBAL_INDEX_PATH,
+            path_or_fileobj=io.BytesIO(serialized_index.encode("utf-8")),
+        )
+    )
+
+    operations.append(
+        CommitOperationAdd(
+            path_in_repo=TRAIN_JSONL_PATH,
+            path_or_fileobj=io.BytesIO(train_jsonl_payload.encode("utf-8")),
+        )
+    )
+
+    for metadata_path, normalized in sorted(metadata_updates.items()):
+        serialized_metadata = json.dumps(normalized, indent=2, ensure_ascii=False) + "\n"
+        operations.append(
+            CommitOperationAdd(
+                path_in_repo=metadata_path,
+                path_or_fileobj=io.BytesIO(serialized_metadata.encode("utf-8")),
+            )
+        )
+
+    api.create_commit(
         repo_id=repo_id,
         repo_type="dataset",
         token=token,
+        operations=operations,
         commit_message=(
-            f"Update global index from dataset metadata ({payload['stats']['total_holds']} holds)"
+            "Update global index, train, and normalized metadata "
+            f"({global_index_payload.get('stats', {}).get('total_holds', 0)} holds)"
         ),
     )
 
@@ -489,7 +577,7 @@ async def trigger_indexation(payload: WebhookPayload) -> dict[str, Any]:
         logger.info("Found %d metadata files in dataset '%s'.", len(metadata_paths), repo_id)
 
         initial_attention = prepare_initial_attention(current_index)
-        holds, needs_attention = rebuild_holds(
+        holds, needs_attention, metadata_updates = rebuild_holds(
             repo_id=repo_id,
             token=token,
             revision=revision,
@@ -500,8 +588,9 @@ async def trigger_indexation(payload: WebhookPayload) -> dict[str, Any]:
         )
 
         updated_index = update_global_index(current_index, holds, needs_attention)
+        train_jsonl_payload = build_train_jsonl(holds)
 
-        if not has_meaningful_changes(current_index, updated_index):
+        if not has_meaningful_changes(current_index, updated_index) and not metadata_updates:
             logger.info("No changes detected, commit skipped to preserve history.")
             return {
                 "status": "success",
@@ -510,7 +599,14 @@ async def trigger_indexation(payload: WebhookPayload) -> dict[str, Any]:
                 "to_identify": updated_index["stats"]["to_identify"],
             }
 
-        upload_global_index(api, repo_id, token, updated_index)
+        commit_dataset_updates(
+            api,
+            repo_id=repo_id,
+            token=token,
+            global_index_payload=updated_index,
+            train_jsonl_payload=train_jsonl_payload,
+            metadata_updates=metadata_updates,
+        )
         logger.info(
             "Global index updated successfully: %d holds, %d attention entries.",
             updated_index["stats"]["total_holds"],
