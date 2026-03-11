@@ -660,3 +660,6 @@ async def trigger_indexation(payload: WebhookPayload) -> dict[str, Any]:
 
 if __name__ == "__main__":
     app.launch()
+
+# Hugging Face Spaces (Gradio SDK) expects a top-level Blocks app named `demo`.
+demo = app
