@@ -24,11 +24,12 @@ from huggingface_hub import HfApi, hf_hub_download, WebhooksServer, WebhookPaylo
 DEFAULT_REPO_ID = "setrsoft/climbing-holds"
 GLOBAL_INDEX_PATH = "global_index.json"
 METADATA_FILENAME = "metadata.json"
-MESH_EXTENSIONS = {".glb", ".gltf"}
+MESH_EXTENSIONS = {".glb", ".gltf", ".obj", ".stl"}
 MANAGED_ATTENTION_KEYS = {
     "invalid_hold_type_reference",
     "invalid_manufacturer_reference",
     "invalid_metadata",
+    "invalid_status_reference",
     "missing_mesh",
     "unknown_hold_type",
     "unknown_manufacturer",
@@ -55,7 +56,11 @@ def bootstrap_global_index(repo_id: str) -> dict[str, Any]:
     )
     return {
         "project": repo_id.split("/")[-1],
-        "allowed_references": {"manufacturers": [], "hold_types": []},
+        "allowed_references": {
+            "manufacturers": [],
+            "hold_types": [],
+            "status": ["to_render", "to_clean", "to_identify"],
+        },
         "stats": {"total_holds": 0, "to_identify": 0},
         "needs_attention": {},
         "holds": [],
@@ -167,16 +172,22 @@ def ensure_allowed_references(global_index: dict[str, Any]) -> dict[str, set[str
 
     manufacturers = allowed_references.setdefault("manufacturers", [])
     hold_types = allowed_references.setdefault("hold_types", [])
+    statuses = allowed_references.setdefault("status", [])
 
     if not isinstance(manufacturers, list) or not isinstance(hold_types, list):
         raise RuntimeError(
             "global_index.json must define list values for 'allowed_references.manufacturers' "
             "and 'allowed_references.hold_types'."
         )
+    if not isinstance(statuses, list):
+        raise RuntimeError(
+            "global_index.json must define a list value for 'allowed_references.status'."
+        )
 
     return {
         "manufacturers": {value for value in map(normalize_reference_value, manufacturers) if value},
         "hold_types": {value for value in map(normalize_reference_value, hold_types) if value},
+        "status": {value for value in map(normalize_reference_value, statuses) if value},
     }
 
 
@@ -282,6 +293,17 @@ def validate_metadata(
     if model_ref in {None, "unknown"}:
         needs_attention["unknown_model"].add(hold_id)
         logger.warning("Hold '%s' still has an unknown 'model'.", hold_id)
+
+    status_value = metadata.get("status")
+    status_ref = normalize_reference_value(status_value)
+    if status_ref is not None and status_ref not in allowed_references["status"]:
+        warn_about_reference(
+            hold_id=hold_id,
+            field_name="status",
+            value=status_value,
+            allowed_values=allowed_references["status"],
+            attention_bucket=needs_attention["invalid_status_reference"],
+        )
 
 
 def rebuild_holds(
