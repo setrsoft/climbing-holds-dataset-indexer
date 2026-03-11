@@ -422,9 +422,13 @@ def upload_global_index(api: HfApi, repo_id: str, token: str, payload: dict[str,
 
 app = WebhooksServer(webhook_secret=os.environ.get("WEBHOOK_SECRET"))
 
-
 @app.add_webhook("/index")
 async def trigger_indexation(payload: WebhookPayload) -> dict[str, Any]:
+
+    if payload.event.action == "ping":
+        logger.info("Keep-alive ping received. Space is awake!")
+        return {"status": "success", "message": "PONG - Space is awake"}
+    
     # Only react to repo content updates on the target dataset
     if payload.event.action != "update":
         return {"status": "ignored", "reason": "Not an update event"}
