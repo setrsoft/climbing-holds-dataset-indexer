@@ -105,6 +105,47 @@ def load_json_file(
         raise RuntimeError(f"'{path_in_repo}' is not valid JSON: {exc}") from exc
 
 
+LEGACY_GLOBAL_INDEX_PATH = "global_index.json"
+
+
+def load_global_index(
+    repo_id: str,
+    token: str,
+    revision: str | None,
+) -> dict[str, Any]:
+    """Load global index from repo. Tries new path first, then legacy root path (one-time migration)."""
+    last_error: Exception | None = None
+    for path in (GLOBAL_INDEX_PATH, LEGACY_GLOBAL_INDEX_PATH):
+        try:
+            data = load_json_file(
+                repo_id, path, token, revision, allow_empty=True
+            )
+            if not isinstance(data, dict):
+                raise RuntimeError(f"'{path}' must contain a top-level JSON object.")
+            if path == LEGACY_GLOBAL_INDEX_PATH:
+                data.pop("holds", None)
+                logger.info(
+                    "Loaded index from legacy path '%s'; next commit will write to new structure.",
+                    path,
+                )
+            return data
+        except Exception as exc:
+            last_error = exc
+            err_msg = str(exc).lower()
+            if "404" in str(exc) or "not found" in err_msg or "no file" in err_msg:
+                continue
+            raise
+    if last_error is not None:
+        err_msg = str(last_error).lower()
+        if "404" in str(last_error) or "not found" in err_msg or "no file" in err_msg:
+            logger.warning("No global index file found; bootstrapping new index.")
+            return bootstrap_global_index(repo_id)
+        raise RuntimeError(
+            f"Could not load global index from '{repo_id}' (tried {GLOBAL_INDEX_PATH}, {LEGACY_GLOBAL_INDEX_PATH})."
+        ) from last_error
+    return bootstrap_global_index(repo_id)
+
+
 def list_dataset_files(
     api: HfApi,
     repo_id: str,
@@ -562,15 +603,9 @@ async def trigger_indexation(payload: WebhookPayload) -> dict[str, Any]:
     revision = os.environ.get("HF_REVISION")
 
     try:
-        current_index = load_json_file(
-            repo_id,
-            GLOBAL_INDEX_PATH,
-            token,
-            revision,
-            allow_empty=True,
-        )
+        current_index = load_global_index(repo_id, token, revision)
         if not isinstance(current_index, dict):
-            raise RuntimeError("global_index.json must contain a top-level JSON object.")
+            raise RuntimeError("global_index must be a top-level JSON object.")
 
         allowed_references = ensure_allowed_references(current_index)
         metadata_paths, files_by_directory = list_dataset_files(api, repo_id, token, revision)
