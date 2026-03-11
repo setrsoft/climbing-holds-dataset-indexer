@@ -435,7 +435,7 @@ async def trigger_indexation(payload: WebhookPayload) -> dict[str, Any]:
     if getattr(payload.repo, "type", None) != "dataset":
         return {"status": "ignored", "reason": "Not a dataset repo"}
 
-    repo_id = getattr(payload.repo, "name", None) or os.environ.get("HF_REPO_ID", DEFAULT_REPO_ID)
+    repo_id = DEFAULT_REPO_ID
     if repo_id != DEFAULT_REPO_ID:
         return {"status": "ignored", "reason": f"Repo '{repo_id}' is not the target dataset"}
 
