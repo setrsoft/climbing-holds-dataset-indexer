@@ -44,14 +44,9 @@ async def _handle_vote(request: Request):
 
 
 def _launch_with_vote_route():
-    app.launch(prevent_thread_lock=True)
     app.fastapi_app.post("/vote")(_handle_vote)
-    # Block main thread: WebhooksServer may not expose _ui (e.g. when using default UI)
-    ui = getattr(app, "_ui", None)
-    if ui is not None and hasattr(ui, "block_thread"):
-        ui.block_thread()
-    else:
-        threading.Event().wait()
+    app.launch(prevent_thread_lock=True, ssr_mode=False)
+    threading.Event().wait()
 
 
 if __name__ == "__main__":
