@@ -43,14 +43,6 @@ async def _handle_vote(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-def _launch_with_vote_route():
-    app.fastapi_app.post("/vote")(_handle_vote)
-    app.launch(prevent_thread_lock=True, ssr_mode=False)
-    threading.Event().wait()
-
-
-if __name__ == "__main__":
-    _launch_with_vote_route()
-
-# Hugging Face Spaces (Gradio SDK) expects a top-level Blocks app named `demo`.
-demo = app
+app.app.post("/vote")(_handle_vote)
+app.launch(ssr_mode=False, prevent_thread_lock=True)
+threading.Event().wait()

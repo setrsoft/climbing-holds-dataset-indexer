@@ -7,13 +7,16 @@ from pathlib import PurePosixPath
 
 from huggingface_hub import HfApi, WebhooksServer, WebhookPayload
 
+import gradio as gr
+
 import config
 import global_index
 import hf_repo
 import holds
 
 
-app = WebhooksServer(webhook_secret=os.environ.get("WEBHOOK_SECRET"))
+demo = gr.Blocks()
+app = WebhooksServer(ui=demo, webhook_secret=os.environ.get("WEBHOOK_SECRET"))
 
 
 @app.add_webhook("/index")
