@@ -208,8 +208,9 @@ def commit_vote_updates(
     repo_id: str,
     token: str,
     hold_votes: dict[str, list[Any]],
+    metadata_update: tuple[str, dict[str, Any]] | None = None,
 ) -> None:
-    """Commit per-hold votes.json files."""
+    """Commit per-hold votes.json files, and optionally an updated metadata.json."""
     operations: list[CommitOperationAdd] = []
     for path_in_repo, votes_list in sorted(hold_votes.items()):
         serialized = json.dumps(votes_list, indent=2, ensure_ascii=False) + "\n"
@@ -217,6 +218,15 @@ def commit_vote_updates(
             CommitOperationAdd(
                 path_in_repo=path_in_repo,
                 path_or_fileobj=io.BytesIO(serialized.encode("utf-8")),
+            )
+        )
+    if metadata_update is not None:
+        metadata_path, metadata_payload = metadata_update
+        serialized_metadata = json.dumps(metadata_payload, indent=2, ensure_ascii=False) + "\n"
+        operations.append(
+            CommitOperationAdd(
+                path_in_repo=metadata_path,
+                path_or_fileobj=io.BytesIO(serialized_metadata.encode("utf-8")),
             )
         )
     api.create_commit(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+from collections import Counter
 from typing import Any
 
 from huggingface_hub import HfApi
@@ -21,6 +22,36 @@ ISO8601_PATTERN = re.compile(
 
 class DuplicateVoteError(Exception):
     """Raised when the same voter has already voted for a given hold."""
+
+
+def infer_dominant_values(votes: list[dict[str, Any]]) -> tuple[str | None, str | None]:
+    """Return the most-voted manufacturer and model from a list of vote entries.
+
+    Only non-empty, non-whitespace values are counted. Ties are broken by
+    picking the lexicographically smallest value so the result is deterministic.
+    Returns (None, None) when no valid votes exist.
+    """
+    manufacturers: list[str] = []
+    models: list[str] = []
+    for vote in votes:
+        if not isinstance(vote, dict):
+            continue
+        m = vote.get("hold_manufacturer")
+        if isinstance(m, str) and m.strip():
+            manufacturers.append(m.strip())
+        mo = vote.get("hold_model")
+        if isinstance(mo, str) and mo.strip():
+            models.append(mo.strip())
+
+    def _dominant(values: list[str]) -> str | None:
+        if not values:
+            return None
+        counts = Counter(values)
+        max_count = max(counts.values())
+        candidates = sorted(k for k, v in counts.items() if v == max_count)
+        return candidates[0]
+
+    return _dominant(manufacturers), _dominant(models)
 
 
 def _validate_rating(value: Any) -> int:
@@ -125,6 +156,51 @@ def _has_existing_vote(hold_votes: list[dict[str, Any]], fingerprint: str) -> bo
     return any(v.get("voter_fingerprint") == fingerprint for v in hold_votes)
 
 
+def _build_metadata_update(
+    repo_id: str,
+    token: str,
+    revision: str | None,
+    hold_id: str,
+    hold_votes: list[dict[str, Any]],
+) -> tuple[str, dict[str, Any]] | None:
+    """Load metadata.json for the hold and apply dominant manufacturer/model from votes.
+
+    Returns (metadata_path, updated_metadata) if any field changed, else None.
+    """
+    metadata_path = f"{hold_id}/{config.METADATA_FILENAME}"
+    metadata = hf_repo.load_json_file_optional(
+        repo_id, metadata_path, token, revision, default=None
+    )
+    if not isinstance(metadata, dict):
+        config.logger.warning(
+            "Could not load metadata for hold '%s'; skipping metadata update from votes.", hold_id
+        )
+        return None
+
+    dominant_manufacturer, dominant_model = infer_dominant_values(hold_votes)
+    updated = dict(metadata)
+    changed = False
+
+    if dominant_manufacturer and updated.get("manufacturer") != dominant_manufacturer:
+        updated["manufacturer"] = dominant_manufacturer
+        changed = True
+
+    if dominant_model and updated.get("model") != dominant_model:
+        updated["model"] = dominant_model
+        changed = True
+
+    if not changed:
+        return None
+
+    config.logger.info(
+        "Updating hold '%s' metadata from votes: manufacturer=%r, model=%r",
+        hold_id,
+        dominant_manufacturer,
+        dominant_model,
+    )
+    return metadata_path, updated
+
+
 def process_vote(
     api: HfApi,
     repo_id: str,
@@ -134,7 +210,8 @@ def process_vote(
     client_ip: str,
 ) -> dict[str, Any]:
     """
-    Load hold votes, check for duplicates, append entry, commit.
+    Load hold votes, check for duplicates, append entry, commit votes.json and
+    metadata.json (with dominant manufacturer/model from all votes) together.
     On commit failure with user token, retries with HF_TOKEN.
     Raises DuplicateVoteError if the same voter already voted for this hold.
     """
@@ -158,24 +235,25 @@ def process_vote(
     hold_votes.append(vote_entry)
     hold_votes_map = {hold_votes_path: hold_votes}
 
-    try:
+    metadata_update = _build_metadata_update(repo_id, token, revision, hold_id, hold_votes)
+
+    def _do_commit(commit_token: str) -> None:
         hf_repo.commit_vote_updates(
             api,
             repo_id=repo_id,
-            token=token,
+            token=commit_token,
             hold_votes=hold_votes_map,
+            metadata_update=metadata_update,
         )
+
+    try:
+        _do_commit(token)
         return {"status": "success", "message": "Vote recorded"}
     except Exception as exc:
         if not anonymous and user_token and token == user_token:
             hf_token = os.environ.get("HF_TOKEN")
             if hf_token and hf_token != user_token:
                 config.logger.warning("Commit with user token failed, retrying with HF_TOKEN: %s", exc)
-                hf_repo.commit_vote_updates(
-                    api,
-                    repo_id=repo_id,
-                    token=hf_token,
-                    hold_votes=hold_votes_map,
-                )
+                _do_commit(hf_token)
                 return {"status": "success", "message": "Vote recorded"}
         raise
