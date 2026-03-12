@@ -116,6 +116,3 @@ async def trigger_indexation(payload: WebhookPayload) -> dict:
     except Exception as exc:
         config.logger.exception("Global index update failed: %s", exc)
         return {"status": "error", "reason": str(exc)}
-
-
-gr.mount_gradio_app(app, demo, path="/")

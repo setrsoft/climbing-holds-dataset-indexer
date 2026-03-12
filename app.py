@@ -19,7 +19,9 @@ from huggingface_hub import HfApi
 
 import config
 import votes
-from webhooks import app, verify_webhook_secret
+import gradio as gr
+
+from webhooks import app, demo, verify_webhook_secret
 
 
 @app.post("/webhooks/vote", dependencies=[Depends(verify_webhook_secret)])
@@ -43,6 +45,8 @@ async def _handle_vote(request: Request):
         config.logger.exception("Vote failed: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
 
+
+gr.mount_gradio_app(app, demo, path="/")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=7860)
