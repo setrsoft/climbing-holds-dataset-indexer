@@ -5,7 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import PurePosixPath
 
-from huggingface_hub import HfApi, WebhooksServer, WebhookPayload
+from fastapi import Depends, FastAPI, HTTPException, Request
+from huggingface_hub import HfApi, WebhookPayload
 
 import gradio as gr
 
@@ -15,17 +16,22 @@ import hf_repo
 import holds
 
 
+async def verify_webhook_secret(request: Request):
+    secret = os.environ.get("WEBHOOK_SECRET")
+    if secret and request.headers.get("X-Webhook-Secret") != secret:
+        raise HTTPException(status_code=403, detail="Invalid webhook secret")
+
+
+app = FastAPI()
 demo = gr.Blocks()
-app = WebhooksServer(ui=demo, webhook_secret=os.environ.get("WEBHOOK_SECRET"))
 
 
-@app.add_webhook("/index")
+@app.post("/webhooks/index", dependencies=[Depends(verify_webhook_secret)])
 async def trigger_indexation(payload: WebhookPayload) -> dict:
     if payload.event.action == "ping":
         config.logger.info("Keep-alive ping received. Space is awake!")
         return {"status": "success", "message": "PONG - Space is awake"}
 
-    # Only react to repo content updates on the target dataset
     if payload.event.action != "update":
         return {"status": "ignored", "reason": "Not an update event"}
 
@@ -110,3 +116,6 @@ async def trigger_indexation(payload: WebhookPayload) -> dict:
     except Exception as exc:
         config.logger.exception("Global index update failed: %s", exc)
         return {"status": "error", "reason": str(exc)}
+
+
+gr.mount_gradio_app(app, demo, path="/")

@@ -11,18 +11,18 @@ POST /webhooks/vote accepts a JSON body to record a user vote (see votes.py for 
 from __future__ import annotations
 
 import os
-import threading
 
-from fastapi import Request
+import uvicorn
+from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 from huggingface_hub import HfApi
 
 import config
-from webhooks import app
 import votes
+from webhooks import app, verify_webhook_secret
 
 
-@app.add_webhook("/vote")
+@app.post("/webhooks/vote", dependencies=[Depends(verify_webhook_secret)])
 async def _handle_vote(request: Request):
     try:
         body = await request.json()
@@ -45,5 +45,4 @@ async def _handle_vote(request: Request):
 
 
 if __name__ == "__main__":
-    app.launch(prevent_thread_lock=True)
-    threading.Event().wait()
+    uvicorn.run(app, host="0.0.0.0", port=7860)
