@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime, timezone
 from typing import Any
 
 from huggingface_hub import HfApi
@@ -105,7 +104,7 @@ def process_vote(
     user_token: str | None,
 ) -> dict[str, Any]:
     """
-    Load global and hold votes, append entry, commit. On commit failure with user token,
+    Load hold votes, append entry, commit. On commit failure with user token,
     retries with HF_TOKEN. Returns a response dict for the API.
     """
     anonymous = vote_entry.get("anonymous", True)
@@ -113,19 +112,12 @@ def process_vote(
     hold_id = vote_entry["hold_id"]
     hold_votes_path = f"{hold_id}/{config.VOTES_FILENAME}"
 
-    global_votes: list[Any] = hf_repo.load_json_file_optional(
-        repo_id, config.GLOBAL_VOTES_PATH, token, revision, default=[]
-    )
-    if not isinstance(global_votes, list):
-        global_votes = []
-
     hold_votes: list[Any] = hf_repo.load_json_file_optional(
         repo_id, hold_votes_path, token, revision, default=[]
     )
     if not isinstance(hold_votes, list):
         hold_votes = []
 
-    global_votes.append(vote_entry)
     hold_votes.append(vote_entry)
     hold_votes_map = {hold_votes_path: hold_votes}
 
@@ -134,7 +126,6 @@ def process_vote(
             api,
             repo_id=repo_id,
             token=token,
-            global_votes=global_votes,
             hold_votes=hold_votes_map,
         )
         return {"status": "success", "message": "Vote recorded"}
@@ -147,7 +138,6 @@ def process_vote(
                     api,
                     repo_id=repo_id,
                     token=hf_token,
-                    global_votes=global_votes,
                     hold_votes=hold_votes_map,
                 )
                 return {"status": "success", "message": "Vote recorded"}

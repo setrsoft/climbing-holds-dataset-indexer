@@ -6,7 +6,6 @@ import logging
 
 DEFAULT_REPO_ID = "setrsoft/climbing-holds"
 GLOBAL_INDEX_PATH = "meta/global_index.json"
-GLOBAL_VOTES_PATH = "meta/votes.json"
 LEGACY_GLOBAL_INDEX_PATH = "global_index.json"
 TRAIN_JSONL_PATH = "train.jsonl"
 METADATA_FILENAME = "metadata.json"

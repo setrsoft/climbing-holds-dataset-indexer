@@ -207,18 +207,10 @@ def commit_vote_updates(
     *,
     repo_id: str,
     token: str,
-    global_votes: list[Any],
     hold_votes: dict[str, list[Any]],
 ) -> None:
-    """Commit meta/votes.json and per-hold votes.json files."""
+    """Commit per-hold votes.json files."""
     operations: list[CommitOperationAdd] = []
-    serialized_global = json.dumps(global_votes, indent=2, ensure_ascii=False) + "\n"
-    operations.append(
-        CommitOperationAdd(
-            path_in_repo=config.GLOBAL_VOTES_PATH,
-            path_or_fileobj=io.BytesIO(serialized_global.encode("utf-8")),
-        )
-    )
     for path_in_repo, votes_list in sorted(hold_votes.items()):
         serialized = json.dumps(votes_list, indent=2, ensure_ascii=False) + "\n"
         operations.append(
@@ -232,5 +224,5 @@ def commit_vote_updates(
         repo_type="dataset",
         token=token,
         operations=operations,
-        commit_message="Update votes (global and per-hold)",
+        commit_message="Update votes (per-hold)",
     )
