@@ -5,12 +5,13 @@ Deploy this file as app.py in a Hugging Face Space (Gradio SDK).
 Configure the HF webhook to point to: https://YOUR-SPACE.hf.space/webhooks/index
 Set Space secrets: HF_TOKEN (write access to the dataset), WEBHOOK_SECRET (same as in webhook settings).
 
-POST /vote accepts a JSON body to record a user vote (see votes.py for payload shape).
+POST /webhooks/vote accepts a JSON body to record a user vote (see votes.py for payload shape).
 """
 
 from __future__ import annotations
 
 import os
+import threading
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -21,7 +22,7 @@ from webhooks import app
 import votes
 
 
-@app.app.post("/vote")
+@app.add_webhook("/vote")
 async def _handle_vote(request: Request):
     try:
         body = await request.json()
@@ -43,6 +44,5 @@ async def _handle_vote(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-app.launch(ssr_mode=False, prevent_thread_lock=True)
-import threading
+app.launch(prevent_thread_lock=True, ssr_mode=False)
 threading.Event().wait()
