@@ -52,6 +52,25 @@ def load_json_file(
         raise RuntimeError(f"'{path_in_repo}' is not valid JSON: {exc}") from exc
 
 
+def load_json_file_optional(
+    repo_id: str,
+    path_in_repo: str,
+    token: str,
+    revision: str | None,
+    default: Any,
+) -> Any:
+    """Load JSON file from repo, or return default if file is missing (404) or empty."""
+    try:
+        return load_json_file(
+            repo_id, path_in_repo, token, revision, allow_empty=False
+        )
+    except Exception as exc:
+        err_msg = str(exc).lower()
+        if "404" in str(exc) or "not found" in err_msg or "no file" in err_msg or "empty" in err_msg:
+            return default
+        raise
+
+
 def load_global_index(
     repo_id: str,
     token: str,
@@ -132,6 +151,7 @@ def commit_dataset_updates(
     global_index_payload: dict[str, Any],
     train_jsonl_payload: str,
     metadata_updates: dict[str, dict[str, Any]],
+    new_votes_files: dict[str, list[Any]] | None = None,
 ) -> None:
     operations: list[CommitOperationAdd] = []
 
@@ -159,6 +179,17 @@ def commit_dataset_updates(
             )
         )
 
+    if new_votes_files:
+        for path_in_repo, votes_list in sorted(new_votes_files.items()):
+            payload = votes_list if isinstance(votes_list, list) else list(votes_list)
+            serialized = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+            operations.append(
+                CommitOperationAdd(
+                    path_in_repo=path_in_repo,
+                    path_or_fileobj=io.BytesIO(serialized.encode("utf-8")),
+                )
+            )
+
     api.create_commit(
         repo_id=repo_id,
         repo_type="dataset",
@@ -168,4 +199,38 @@ def commit_dataset_updates(
             "Update global index, train, and normalized metadata "
             f"({global_index_payload.get('stats', {}).get('total_holds', 0)} holds)"
         ),
+    )
+
+
+def commit_vote_updates(
+    api: HfApi,
+    *,
+    repo_id: str,
+    token: str,
+    global_votes: list[Any],
+    hold_votes: dict[str, list[Any]],
+) -> None:
+    """Commit meta/votes.json and per-hold votes.json files."""
+    operations: list[CommitOperationAdd] = []
+    serialized_global = json.dumps(global_votes, indent=2, ensure_ascii=False) + "\n"
+    operations.append(
+        CommitOperationAdd(
+            path_in_repo=config.GLOBAL_VOTES_PATH,
+            path_or_fileobj=io.BytesIO(serialized_global.encode("utf-8")),
+        )
+    )
+    for path_in_repo, votes_list in sorted(hold_votes.items()):
+        serialized = json.dumps(votes_list, indent=2, ensure_ascii=False) + "\n"
+        operations.append(
+            CommitOperationAdd(
+                path_in_repo=path_in_repo,
+                path_or_fileobj=io.BytesIO(serialized.encode("utf-8")),
+            )
+        )
+    api.create_commit(
+        repo_id=repo_id,
+        repo_type="dataset",
+        token=token,
+        operations=operations,
+        commit_message="Update votes (global and per-hold)",
     )

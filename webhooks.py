@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import PurePosixPath
 
 from huggingface_hub import HfApi, WebhooksServer, WebhookPayload
 
@@ -66,7 +67,15 @@ async def trigger_indexation(payload: WebhookPayload) -> dict:
         updated_index = global_index.update_global_index(current_index, holds_list, needs_attention)
         train_jsonl_payload = holds.build_train_jsonl(holds_list)
 
-        if not global_index.has_meaningful_changes(current_index, updated_index) and not metadata_updates:
+        # Create missing per-hold votes.json files (empty list)
+        new_votes_files: dict[str, list] = {}
+        for metadata_path in metadata_paths:
+            hold_dir = str(PurePosixPath(metadata_path).parent)
+            votes_path = f"{hold_dir}/{config.VOTES_FILENAME}"
+            if votes_path not in files_by_directory.get(hold_dir, []):
+                new_votes_files[votes_path] = []
+
+        if not global_index.has_meaningful_changes(current_index, updated_index) and not metadata_updates and not new_votes_files:
             config.logger.info("No changes detected, commit skipped to preserve history.")
             return {
                 "status": "success",
@@ -82,6 +91,7 @@ async def trigger_indexation(payload: WebhookPayload) -> dict:
             global_index_payload=updated_index,
             train_jsonl_payload=train_jsonl_payload,
             metadata_updates=metadata_updates,
+            new_votes_files=new_votes_files if new_votes_files else None,
         )
         config.logger.info(
             "Global index updated successfully: %d holds, %d attention entries.",
