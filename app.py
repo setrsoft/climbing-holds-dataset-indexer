@@ -11,7 +11,6 @@ POST /vote accepts a JSON body to record a user vote (see votes.py for payload s
 from __future__ import annotations
 
 import os
-import threading
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -22,6 +21,7 @@ from webhooks import app
 import votes
 
 
+@app.app.post("/vote")
 async def _handle_vote(request: Request):
     try:
         body = await request.json()
@@ -43,6 +43,6 @@ async def _handle_vote(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-app.app.post("/vote")(_handle_vote)
 app.launch(ssr_mode=False, prevent_thread_lock=True)
+import threading
 threading.Event().wait()
