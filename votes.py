@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from typing import Any
@@ -11,12 +12,15 @@ from huggingface_hub import HfApi
 import config
 import hf_repo
 
-# Rating allowed range (1-5)
 RATING_MIN = 1
 RATING_MAX = 5
 ISO8601_PATTERN = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$"
 )
+
+
+class DuplicateVoteError(Exception):
+    """Raised when the same voter has already voted for a given hold."""
 
 
 def _validate_rating(value: Any) -> int:
@@ -41,6 +45,7 @@ def validate_vote_payload(body: dict[str, Any]) -> tuple[dict[str, Any], str | N
     """
     Validate vote payload and build the stored vote entry (no token).
     Returns (vote_entry, hf_token_or_none). Raises ValueError on validation error.
+    The user's hf_token is never included in vote_entry and must never be persisted.
     """
     required = ("hold_id", "hold_manufacturer", "hold_model", "hold_3d_file_rating", "vote_datetime", "anonymous")
     for key in required:
@@ -86,8 +91,28 @@ def validate_vote_payload(body: dict[str, Any]) -> tuple[dict[str, Any], str | N
     return entry, hf_token
 
 
+def compute_voter_fingerprint(
+    client_ip: str,
+    anonymous: bool,
+    user_token: str | None,
+) -> str:
+    """Build a unique, stable fingerprint for a voter.
+
+    - Non-anonymous with a valid HF token: resolve the HF username via whoami.
+    - Anonymous or token resolution fails: SHA-256 of the client IP.
+    """
+    if not anonymous and user_token:
+        try:
+            info = HfApi().whoami(token=user_token)
+            username = info.get("name") or info.get("user")
+            if username:
+                return f"hf:{username}"
+        except Exception:
+            pass
+    return f"ip:{hashlib.sha256(client_ip.encode()).hexdigest()}"
+
+
 def _resolve_commit_token(anonymous: bool, user_token: str | None) -> str:
-    """Return token to use for commit: HF_TOKEN for anonymous, else user token or fallback HF_TOKEN."""
     hf_token = os.environ.get("HF_TOKEN")
     if anonymous or not user_token:
         if not hf_token:
@@ -96,21 +121,29 @@ def _resolve_commit_token(anonymous: bool, user_token: str | None) -> str:
     return user_token
 
 
+def _has_existing_vote(hold_votes: list[dict[str, Any]], fingerprint: str) -> bool:
+    return any(v.get("voter_fingerprint") == fingerprint for v in hold_votes)
+
+
 def process_vote(
     api: HfApi,
     repo_id: str,
     revision: str | None,
     vote_entry: dict[str, Any],
     user_token: str | None,
+    client_ip: str,
 ) -> dict[str, Any]:
     """
-    Load hold votes, append entry, commit. On commit failure with user token,
-    retries with HF_TOKEN. Returns a response dict for the API.
+    Load hold votes, check for duplicates, append entry, commit.
+    On commit failure with user token, retries with HF_TOKEN.
+    Raises DuplicateVoteError if the same voter already voted for this hold.
     """
     anonymous = vote_entry.get("anonymous", True)
     token = _resolve_commit_token(anonymous, user_token)
     hold_id = vote_entry["hold_id"]
     hold_votes_path = f"{hold_id}/{config.VOTES_FILENAME}"
+
+    fingerprint = compute_voter_fingerprint(client_ip, anonymous, user_token)
 
     hold_votes: list[Any] = hf_repo.load_json_file_optional(
         repo_id, hold_votes_path, token, revision, default=[]
@@ -118,6 +151,10 @@ def process_vote(
     if not isinstance(hold_votes, list):
         hold_votes = []
 
+    if _has_existing_vote(hold_votes, fingerprint):
+        raise DuplicateVoteError("You have already voted for this hold")
+
+    vote_entry["voter_fingerprint"] = fingerprint
     hold_votes.append(vote_entry)
     hold_votes_map = {hold_votes_path: hold_votes}
 

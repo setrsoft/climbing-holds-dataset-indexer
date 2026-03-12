@@ -34,13 +34,20 @@ async def _handle_vote(request: Request):
         vote_entry, hf_token = votes.validate_vote_payload(body)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=422)
+
+    client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    if not client_ip:
+        client_ip = request.client.host if request.client else "unknown"
+
     try:
         api = HfApi()
         revision = os.environ.get("HF_REVISION")
         result = votes.process_vote(
-            api, config.DEFAULT_REPO_ID, revision, vote_entry, hf_token
+            api, config.DEFAULT_REPO_ID, revision, vote_entry, hf_token, client_ip
         )
         return JSONResponse(result)
+    except votes.DuplicateVoteError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
     except Exception as e:
         config.logger.exception("Vote failed: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
