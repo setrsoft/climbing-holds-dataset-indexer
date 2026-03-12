@@ -44,5 +44,6 @@ async def _handle_vote(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-app.launch(prevent_thread_lock=True, ssr_mode=False)
-threading.Event().wait()
+if __name__ == "__main__":
+    app.launch(prevent_thread_lock=True)
+    threading.Event().wait()

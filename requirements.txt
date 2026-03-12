@@ -1,4 +1,4 @@
 fastapi
 huggingface_hub>=0.28.0
-gradio==5.15.0
+gradio==4.44.1
 pydantic>=2.0
