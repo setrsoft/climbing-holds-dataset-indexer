@@ -55,7 +55,7 @@ async def _handle_vote(request: Request):
 
     try:
         api = HfApi()
-        revision = os.environ.get("HF_REVISION")
+        revision = os.environ.get("HF_REVISION") or "staging"
         result = votes.process_vote(
             api, config.DEFAULT_REPO_ID, revision, vote_entry, hf_token, client_ip
         )

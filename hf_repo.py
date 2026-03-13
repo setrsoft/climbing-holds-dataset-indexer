@@ -254,6 +254,7 @@ def commit_vote_updates(
     *,
     repo_id: str,
     token: str,
+    revision: str | None = None,
     hold_votes: dict[str, list[Any]],
     metadata_update: tuple[str, dict[str, Any]] | None = None,
 ) -> None:
@@ -287,4 +288,5 @@ def commit_vote_updates(
         token=token,
         operations=operations,
         commit_message=commit_message,
+        revision=revision,
     )

@@ -244,6 +244,7 @@ def process_vote(
             api,
             repo_id=repo_id,
             token=commit_token,
+            revision=revision,
             hold_votes=hold_votes_map,
             metadata_update=metadata_update,
         )
