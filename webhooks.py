@@ -33,7 +33,12 @@ app.add_middleware(
     allow_methods=["POST", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Webhook-Secret", "X-Upload-Secret"],
 )
-demo = gr.Blocks()
+with gr.Blocks() as demo:
+    gr.HTML(
+        '<iframe src="https://setrsoft.github.io/holds-dataset-hub" '
+        'style="width:100%;height:100vh;border:none;" '
+        'allow="fullscreen"></iframe>'
+    )
 
 
 @app.post("/webhooks/index", dependencies=[Depends(verify_webhook_secret)])
