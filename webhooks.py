@@ -63,7 +63,8 @@ async def trigger_indexation(payload: WebhookPayload) -> dict:
     api = HfApi(token=token)
     revision = os.environ.get("HF_REVISION")
 
-    latest_commit = next(api.list_repo_commits(repo_id, repo_type="dataset"), None)
+    commits = api.list_repo_commits(repo_id, repo_type="dataset")
+    latest_commit = commits[0] if commits else None
     if latest_commit and latest_commit.title == "Update votes (per-hold)":
         config.logger.debug("Vote-only commit detected, skipping re-indexation.")
         return {"status": "ignored", "reason": "Vote-only commit"}
