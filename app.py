@@ -30,8 +30,14 @@ async def _handle_vote(request: Request):
         body = await request.json()
     except Exception:
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    auth_header = request.headers.get("Authorization", "")
+    hf_token: str | None = None
+    if auth_header.startswith("Bearer "):
+        hf_token = auth_header.removeprefix("Bearer ").strip() or None
+
     try:
-        vote_entry, hf_token = votes.validate_vote_payload(body)
+        vote_entry, hf_token = votes.validate_vote_payload(body, hf_token=hf_token)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=422)
 

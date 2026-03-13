@@ -72,11 +72,14 @@ def _validate_vote_datetime(value: Any) -> str:
     return s
 
 
-def validate_vote_payload(body: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+def validate_vote_payload(
+    body: dict[str, Any],
+    hf_token: str | None = None,
+) -> tuple[dict[str, Any], str | None]:
     """
     Validate vote payload and build the stored vote entry (no token).
     Returns (vote_entry, hf_token_or_none). Raises ValueError on validation error.
-    The user's hf_token is never included in vote_entry and must never be persisted.
+    The user's hf_token is passed via the Authorization header and must never be persisted.
     """
     required = ("hold_id", "hold_manufacturer", "hold_model", "hold_3d_file_rating", "vote_datetime", "anonymous")
     for key in required:
@@ -104,12 +107,11 @@ def validate_vote_payload(body: dict[str, Any]) -> tuple[dict[str, Any], str | N
     if not isinstance(anonymous, bool):
         raise ValueError("anonymous must be a boolean")
 
-    hf_token: str | None = None
+    resolved_token: str | None = None
     if not anonymous:
-        t = body.get("hf_token")
-        if not t or not isinstance(t, str) or not t.strip():
-            raise ValueError("hf_token is required when anonymous is false")
-        hf_token = t.strip()
+        if not hf_token or not hf_token.strip():
+            raise ValueError("Authorization header with Bearer token is required when anonymous is false")
+        resolved_token = hf_token.strip()
 
     entry = {
         "hold_id": hold_id,
@@ -119,7 +121,7 @@ def validate_vote_payload(body: dict[str, Any]) -> tuple[dict[str, Any], str | N
         "vote_datetime": vote_datetime,
         "anonymous": anonymous,
     }
-    return entry, hf_token
+    return entry, resolved_token
 
 
 def compute_voter_fingerprint(
