@@ -149,6 +149,7 @@ def commit_dataset_updates(
     *,
     repo_id: str,
     token: str,
+    revision: str = "main",
     global_index_payload: dict[str, Any],
     train_jsonl_payload: str,
     metadata_updates: dict[str, dict[str, Any]],
@@ -197,9 +198,10 @@ def commit_dataset_updates(
         token=token,
         operations=operations,
         commit_message=(
-            "Update global index, train, and normalized metadata "
+            "[AUTO-INDEX] Update global index, train, and normalized metadata "
             f"({global_index_payload.get('stats', {}).get('total_holds', 0)} holds)"
         ),
+        revision=revision,
     )
 
 

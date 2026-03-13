@@ -56,9 +56,15 @@ async def trigger_indexation(payload: WebhookPayload) -> dict:
     if getattr(payload.repo, "type", None) != "dataset":
         return {"status": "ignored", "reason": "Not a dataset repo"}
 
-    repo_id = config.DEFAULT_REPO_ID
+    repo_id = getattr(payload.repo, "name", None)
     if repo_id != config.DEFAULT_REPO_ID:
         return {"status": "ignored", "reason": f"Repo '{repo_id}' is not the target dataset"}
+
+    updated_refs = getattr(payload, "updatedRefs", None) or []
+    branch_refs = [r.ref for r in updated_refs if hasattr(r, "ref")]
+    if not any(ref == "refs/heads/main" for ref in branch_refs):
+        config.logger.debug("Update is not on main branch (refs: %s), skipping.", branch_refs)
+        return {"status": "ignored", "reason": "Not a main branch update"}
 
     token = os.environ.get("HF_TOKEN")
     if not token:
@@ -66,28 +72,27 @@ async def trigger_indexation(payload: WebhookPayload) -> dict:
         return {"status": "error", "reason": "Missing HF_TOKEN"}
 
     api = HfApi(token=token)
-    revision = os.environ.get("HF_REVISION")
 
-    commits = api.list_repo_commits(repo_id, repo_type="dataset")
+    commits = api.list_repo_commits(repo_id, repo_type="dataset", revision="main")
     latest_commit = commits[0] if commits else None
-    if latest_commit and latest_commit.title == "Update votes (per-hold)":
-        config.logger.debug("Vote-only commit detected, skipping re-indexation.")
-        return {"status": "ignored", "reason": "Vote-only commit"}
+    if latest_commit and "[AUTO-INDEX]" in (latest_commit.title or ""):
+        config.logger.debug("Auto-index commit detected, skipping re-indexation.")
+        return {"status": "ignored", "reason": "Auto-index commit"}
 
     try:
-        current_index = hf_repo.load_global_index(repo_id, token, revision)
+        current_index = hf_repo.load_global_index(repo_id, token, "main")
         if not isinstance(current_index, dict):
             raise RuntimeError("global_index must be a top-level JSON object.")
 
         allowed_references = global_index.ensure_allowed_references(current_index)
-        metadata_paths, files_by_directory = hf_repo.list_dataset_files(api, repo_id, token, revision)
+        metadata_paths, files_by_directory = hf_repo.list_dataset_files(api, repo_id, token, "main")
         config.logger.info("Found %d metadata files in dataset '%s'.", len(metadata_paths), repo_id)
 
         initial_attention = global_index.prepare_initial_attention(current_index)
         holds_list, needs_attention, metadata_updates = holds.rebuild_holds(
             repo_id=repo_id,
             token=token,
-            revision=revision,
+            revision="main",
             metadata_paths=metadata_paths,
             files_by_directory=files_by_directory,
             allowed_references=allowed_references,
@@ -118,6 +123,7 @@ async def trigger_indexation(payload: WebhookPayload) -> dict:
             api,
             repo_id=repo_id,
             token=token,
+            revision="main",
             global_index_payload=updated_index,
             train_jsonl_payload=train_jsonl_payload,
             metadata_updates=metadata_updates,
