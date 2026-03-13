@@ -98,7 +98,7 @@ async def handle_anonymous_contribution(
         file_pairs.append((filename, upload_file.file))
 
     repo_id = os.environ.get("HF_ANONYMOUS_REPO_ID", config.ANONYMOUS_REPO_ID_DEFAULT)
-    revision = os.environ.get("HF_REVISION") or None
+    revision = os.environ.get("HF_REVISION") or "staging"
 
     try:
         commit_url = await run_in_threadpool(
