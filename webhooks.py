@@ -31,7 +31,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_default_origins + _extra_origins,
     allow_methods=["POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Webhook-Secret"],
+    allow_headers=["Authorization", "Content-Type", "X-Webhook-Secret", "X-Upload-Secret"],
 )
 demo = gr.Blocks()
 

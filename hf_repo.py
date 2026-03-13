@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import io
 import json
+import uuid
 from collections import defaultdict
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, BinaryIO
 
 from huggingface_hub import CommitOperationAdd, HfApi, hf_hub_download
 
@@ -200,6 +201,52 @@ def commit_dataset_updates(
             f"({global_index_payload.get('stats', {}).get('total_holds', 0)} holds)"
         ),
     )
+
+
+def commit_anonymous_contribution(
+    *,
+    repo_id: str,
+    token: str,
+    revision: str | None,
+    hold_id: str,
+    manufacturer: str,
+    model: str,
+    metadata: dict[str, Any],
+    files: list[tuple[str, BinaryIO]],
+) -> str:
+    """Commit a new anonymous contribution under pending/<uuid>/ and return the commit URL."""
+    folder_uuid = str(uuid.uuid4())
+    folder_path = f"pending/{folder_uuid}"
+
+    operations: list[CommitOperationAdd] = []
+
+    serialized_metadata = json.dumps(metadata, indent=2, ensure_ascii=False) + "\n"
+    operations.append(
+        CommitOperationAdd(
+            path_in_repo=f"{folder_path}/metadata.json",
+            path_or_fileobj=io.BytesIO(serialized_metadata.encode("utf-8")),
+        )
+    )
+
+    for filename, fileobj in files:
+        operations.append(
+            CommitOperationAdd(
+                path_in_repo=f"{folder_path}/{filename}",
+                path_or_fileobj=fileobj,
+            )
+        )
+
+    api = HfApi(token=token)
+    commit_info = api.create_commit(
+        repo_id=repo_id,
+        repo_type="dataset",
+        token=token,
+        operations=operations,
+        commit_message=f"Add hold {hold_id}",
+        commit_description=f"Add climbing hold {hold_id} ({manufacturer} {model})",
+        revision=revision,
+    )
+    return commit_info.commit_url
 
 
 def commit_vote_updates(

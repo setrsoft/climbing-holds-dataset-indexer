@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 DEFAULT_REPO_ID = "setrsoft/climbing-holds"
+ANONYMOUS_REPO_ID_DEFAULT = "eberling1/climbingholds-anonymous-contributions"
 GLOBAL_INDEX_PATH = "meta/global_index.json"
 LEGACY_GLOBAL_INDEX_PATH = "global_index.json"
 TRAIN_JSONL_PATH = "train.jsonl"
