@@ -6,6 +6,7 @@ import os
 from pathlib import PurePosixPath
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from huggingface_hub import HfApi, WebhookPayload
 
 import gradio as gr
@@ -23,6 +24,15 @@ async def verify_webhook_secret(request: Request):
 
 
 app = FastAPI()
+
+_default_origins = ["https://setrsoft.github.io"]
+_extra_origins = [o.strip() for o in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_default_origins + _extra_origins,
+    allow_methods=["POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Webhook-Secret"],
+)
 demo = gr.Blocks()
 
 
