@@ -24,7 +24,7 @@ def canonical_hold_id(metadata: dict[str, Any], metadata_path: str) -> str:
         return folder_name
 
     if hold_id != folder_name:
-        config.logger.warning(
+        config.logger.debug(
             "Hold ID mismatch for '%s': metadata has '%s', using folder name '%s'.",
             metadata_path,
             hold_id,
@@ -55,11 +55,11 @@ def warn_about_reference(
     attention_bucket.add(hold_id)
 
     if normalized_value is None:
-        config.logger.warning("Hold '%s' has a null or empty '%s'.", hold_id, field_name)
+        config.logger.debug("Hold '%s' has a null or empty '%s'.", hold_id, field_name)
         return
 
     if normalized_value == "unknown":
-        config.logger.warning("Hold '%s' still has an unknown '%s'.", hold_id, field_name)
+        config.logger.debug("Hold '%s' still has an unknown '%s'.", hold_id, field_name)
         return
 
     suggestion = difflib.get_close_matches(
@@ -69,7 +69,7 @@ def warn_about_reference(
         cutoff=0.8,
     )
     if suggestion:
-        config.logger.warning(
+        config.logger.debug(
             "Hold '%s' has an invalid '%s' value '%s'. Did you mean '%s'?",
             hold_id,
             field_name,
@@ -78,7 +78,7 @@ def warn_about_reference(
         )
         return
 
-    config.logger.warning(
+    config.logger.debug(
         "Hold '%s' has an invalid '%s' value '%s' which is not in allowed_references.",
         hold_id,
         field_name,
@@ -134,7 +134,7 @@ def validate_metadata(
     model_ref = global_index.normalize_reference_value(model_value)
     if model_ref in {None, "unknown"}:
         needs_attention["unknown_model"].add(hold_id)
-        config.logger.warning("Hold '%s' still has an unknown 'model'.", hold_id)
+        config.logger.debug("Hold '%s' still has an unknown 'model'.", hold_id)
 
     status_value = metadata.get("status")
     status_ref = global_index.normalize_reference_value(status_value)
@@ -216,12 +216,12 @@ def rebuild_holds(
         try:
             metadata = hf_repo.load_json_file(repo_id, metadata_path, token, revision)
         except RuntimeError as exc:
-            config.logger.warning("%s Skipping file.", exc)
+            config.logger.debug("%s Skipping file.", exc)
             needs_attention["invalid_metadata"].add(hold_folder)
             continue
 
         if not isinstance(metadata, dict):
-            config.logger.warning(
+            config.logger.debug(
                 "Metadata file '%s' does not contain a JSON object. Skipping file.",
                 metadata_path,
             )
@@ -237,7 +237,7 @@ def rebuild_holds(
 
         if not infer_mesh_presence(hold_directory, files_by_directory):
             needs_attention["missing_mesh"].add(hold_id)
-            config.logger.warning(
+            config.logger.debug(
                 "Hold '%s' does not have a mesh file next to '%s'.",
                 hold_id,
                 metadata_path,

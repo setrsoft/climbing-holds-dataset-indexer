@@ -63,6 +63,11 @@ async def trigger_indexation(payload: WebhookPayload) -> dict:
     api = HfApi(token=token)
     revision = os.environ.get("HF_REVISION")
 
+    latest_commit = next(api.list_repo_commits(repo_id, repo_type="dataset"), None)
+    if latest_commit and latest_commit.title == "Update votes (per-hold)":
+        config.logger.debug("Vote-only commit detected, skipping re-indexation.")
+        return {"status": "ignored", "reason": "Vote-only commit"}
+
     try:
         current_index = hf_repo.load_global_index(repo_id, token, revision)
         if not isinstance(current_index, dict):

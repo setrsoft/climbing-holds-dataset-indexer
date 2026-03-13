@@ -276,10 +276,15 @@ def commit_vote_updates(
                 path_or_fileobj=io.BytesIO(serialized_metadata.encode("utf-8")),
             )
         )
+    if metadata_update is not None:
+        commit_message = "Update votes and metadata (per-hold)"
+    else:
+        commit_message = "Update votes (per-hold)"
+
     api.create_commit(
         repo_id=repo_id,
         repo_type="dataset",
         token=token,
         operations=operations,
-        commit_message="Update votes (per-hold)",
+        commit_message=commit_message,
     )
