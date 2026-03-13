@@ -7,18 +7,12 @@ import os
 import re
 from typing import Annotated, BinaryIO
 
-from fastapi import Form, HTTPException, Request, UploadFile
+from fastapi import Form, UploadFile
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 import config
 import hf_repo
-
-
-async def verify_upload_secret(request: Request) -> None:
-    secret = os.environ.get("UPLOAD_SECRET")
-    if secret and request.headers.get("X-Upload-Secret") != secret:
-        raise HTTPException(status_code=403, detail="Invalid upload secret")
 
 
 def _sanitize_filename(name: str) -> str:

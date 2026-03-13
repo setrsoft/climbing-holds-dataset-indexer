@@ -21,7 +21,7 @@ import config
 import votes
 import gradio as gr
 
-from contributions import handle_anonymous_contribution, verify_upload_secret
+from contributions import handle_anonymous_contribution
 from webhooks import app, demo, verify_webhook_secret
 
 
@@ -29,7 +29,6 @@ app.add_api_route(
     "/contributions/anonymous",
     handle_anonymous_contribution,
     methods=["POST"],
-    dependencies=[Depends(verify_upload_secret)],
 )
 
 
