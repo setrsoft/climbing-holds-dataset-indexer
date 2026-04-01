@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import difflib
 import json
+import re
 from pathlib import PurePosixPath
 from typing import Any
+
+_HEX_COLOR_RE = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 
 import config
 import global_index
@@ -147,20 +150,16 @@ def validate_metadata(
             attention_bucket=needs_attention["invalid_status_reference"],
         )
 
-    allowed_colors = allowed_references.get("colors", set())
-    if allowed_colors:
-        available_colors = metadata.get("available_colors") or []
-        if isinstance(available_colors, list):
-            for color_value in available_colors:
-                color_ref = global_index.normalize_reference_value(color_value)
-                if color_ref is not None and color_ref not in allowed_colors:
-                    warn_about_reference(
-                        hold_id=hold_id,
-                        field_name="available_colors",
-                        value=color_value,
-                        allowed_values=allowed_colors,
-                        attention_bucket=needs_attention["invalid_color_reference"],
-                    )
+    available_colors = metadata.get("available_colors") or []
+    if isinstance(available_colors, list):
+        for color_value in available_colors:
+            if isinstance(color_value, str) and not _HEX_COLOR_RE.match(color_value):
+                needs_attention["invalid_color_value"].add(hold_id)
+                config.logger.debug(
+                    "Hold '%s' has an invalid hex color value '%s' in 'available_colors'.",
+                    hold_id,
+                    color_value,
+                )
 
 
 def canonical_metadata_defaults() -> list[tuple[str, Any]]:

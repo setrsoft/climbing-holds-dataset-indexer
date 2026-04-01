@@ -59,6 +59,7 @@ def run(*, repo_id: str, revision: str, token: str, commit: bool) -> None:
 
     updated_index = global_index.update_global_index(current_index, holds_list, needs_attention)
     train_jsonl_payload = holds_module.build_train_jsonl(holds_list)
+    updated_index["stats"]["train_jsonl_hash"] = global_index.compute_train_jsonl_hash(train_jsonl_payload)
 
     new_votes_files: dict[str, list] = {}
     for metadata_path in metadata_paths:

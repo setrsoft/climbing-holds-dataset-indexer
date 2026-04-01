@@ -31,7 +31,6 @@ def bootstrap_global_index(repo_id: str) -> dict[str, Any]:
             "manufacturers": [],
             "hold_types": [],
             "status": ["to_render", "to_clean", "to_identify"],
-            "colors": [],
         },
         "stats": {"total_holds": 0, "to_identify": 0},
         "needs_attention": {},
@@ -46,7 +45,6 @@ def ensure_allowed_references(global_index: dict[str, Any]) -> dict[str, set[str
     manufacturers = allowed_references.setdefault("manufacturers", [])
     hold_types = allowed_references.setdefault("hold_types", [])
     statuses = allowed_references.setdefault("status", [])
-    colors = allowed_references.setdefault("colors", [])
 
     if not isinstance(manufacturers, list) or not isinstance(hold_types, list):
         raise RuntimeError(
@@ -57,16 +55,11 @@ def ensure_allowed_references(global_index: dict[str, Any]) -> dict[str, set[str
         raise RuntimeError(
             "global_index.json must define a list value for 'allowed_references.status'."
         )
-    if not isinstance(colors, list):
-        raise RuntimeError(
-            "global_index.json must define a list value for 'allowed_references.colors'."
-        )
 
     return {
         "manufacturers": {value for value in map(normalize_reference_value, manufacturers) if value},
         "hold_types": {value for value in map(normalize_reference_value, hold_types) if value},
         "status": {value for value in map(normalize_reference_value, statuses) if value},
-        "colors": {value for value in map(normalize_reference_value, colors) if value},
     }
 
 
@@ -123,6 +116,10 @@ def build_comparison_payload(global_index: dict[str, Any]) -> dict[str, Any]:
 def compute_payload_hash(payload: dict[str, Any]) -> str:
     canonical_json = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+
+
+def compute_train_jsonl_hash(train_jsonl: str) -> str:
+    return hashlib.sha256(train_jsonl.encode("utf-8")).hexdigest()
 
 
 def has_meaningful_changes(current_index: dict[str, Any], updated_index: dict[str, Any]) -> bool:
