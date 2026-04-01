@@ -147,6 +147,21 @@ def validate_metadata(
             attention_bucket=needs_attention["invalid_status_reference"],
         )
 
+    allowed_colors = allowed_references.get("colors", set())
+    if allowed_colors:
+        available_colors = metadata.get("available_colors") or []
+        if isinstance(available_colors, list):
+            for color_value in available_colors:
+                color_ref = global_index.normalize_reference_value(color_value)
+                if color_ref is not None and color_ref not in allowed_colors:
+                    warn_about_reference(
+                        hold_id=hold_id,
+                        field_name="available_colors",
+                        value=color_value,
+                        allowed_values=allowed_colors,
+                        attention_bucket=needs_attention["invalid_color_reference"],
+                    )
+
 
 def canonical_metadata_defaults() -> list[tuple[str, Any]]:
     return [

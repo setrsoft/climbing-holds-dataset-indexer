@@ -13,6 +13,7 @@ METADATA_FILENAME = "metadata.json"
 VOTES_FILENAME = "votes.json"
 MESH_EXTENSIONS = {".glb", ".gltf", ".obj", ".stl"}
 MANAGED_ATTENTION_KEYS = {
+    "invalid_color_reference",
     "invalid_hold_type_reference",
     "invalid_manufacturer_reference",
     "invalid_metadata",
