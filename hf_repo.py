@@ -7,7 +7,7 @@ import json
 import uuid
 from collections import defaultdict
 from pathlib import PurePosixPath
-from typing import Any, BinaryIO
+from typing import Any
 
 from huggingface_hub import CommitOperationAdd, HfApi, hf_hub_download
 
@@ -214,7 +214,7 @@ def commit_anonymous_contribution(
     manufacturer: str,
     model: str,
     metadata: dict[str, Any],
-    files: list[tuple[str, BinaryIO]],
+    files: list[tuple[str, bytes]],
 ) -> str:
     """Commit a new anonymous contribution under pending/<uuid>/ and return the commit URL."""
     folder_uuid = str(uuid.uuid4())

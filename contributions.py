@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Annotated, BinaryIO
+from typing import Annotated
 
 from fastapi import Form, UploadFile
 from fastapi.responses import JSONResponse
@@ -92,10 +92,10 @@ async def handle_anonymous_contribution(
     raw_names = [_sanitize_filename(f.filename or f"file_{i}") for i, f in enumerate(uploads)]
     deduped_names = _deduplicate_filenames(raw_names)
 
-    file_pairs: list[tuple[str, BinaryIO]] = []
+    file_pairs: list[tuple[str, bytes]] = []
     for upload_file, filename in zip(uploads, deduped_names):
-        await upload_file.seek(0)
-        file_pairs.append((filename, upload_file.file))
+        content = await upload_file.read()
+        file_pairs.append((filename, content))
 
     repo_id = os.environ.get("HF_ANONYMOUS_REPO_ID", config.ANONYMOUS_REPO_ID_DEFAULT)
     revision = os.environ.get("HF_REVISION") or "staging"
